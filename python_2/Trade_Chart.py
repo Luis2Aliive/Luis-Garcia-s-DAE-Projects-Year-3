@@ -57,7 +57,7 @@ def get_stock_data(symbol):
         return None
 
 
-def clean_data(data):
+def is_data_available(data):
     """Step 5: Check that the stock data is available."""
     return data is not None and not data.empty
 
@@ -94,10 +94,29 @@ def display_chart(symbol, prices):
 
 def analyze_trend(symbol, prices):
     """Step 8: Analyze how the stock price changes over time."""
+
     closes = prices["Close"]
+
+    # Handle stock data with multiple columns.
+    if isinstance(closes, pd.DataFrame):
+        closes = closes.iloc[:, 0]
+
+    closes = closes.dropna()
+
+    if closes.empty:
+        print("No closing prices are available for analysis.")
+        return
+
     start_price = float(closes.iloc[0])
     end_price = float(closes.iloc[-1])
-    percent_change = (end_price - start_price) / start_price * 100
+
+    if start_price == 0:
+        print("Cannot calculate percentage change from zero.")
+        return
+
+    percent_change = (
+        (end_price - start_price) / start_price
+    ) * 100
 
     if percent_change > TREND_THRESHOLD:
         trend = "UPTREND (price is rising)"
@@ -107,21 +126,33 @@ def analyze_trend(symbol, prices):
         trend = "SIDEWAYS (price is mostly flat)"
 
     print(f"\n--- {symbol} Trend Analysis ({TIME_PERIOD}) ---")
-    print(f"Starting price : ${start_price:,.2f}")
-    print(f"Latest price : ${end_price:,.2f}")
-    print(f"Change : {percent_change:+.2f}%")
-    print(f"Highest close : ${float(closes.max()):,.2f}")
-    print(f"Lowest close : ${float(closes.min()):,.2f}")
-    print(f"Overall trend : {trend}")
-    # Moving average signal (only if there is enough data for both averages)
+    print(f"Starting price: ${start_price:,.2f}")
+    print(f"Latest price: ${end_price:,.2f}")
+    print(f"Change: {percent_change:+.2f}%")
+    print(f"Highest close: ${float(closes.max()):,.2f}")
+    print(f"Lowest close: ${float(closes.min()):,.2f}")
+    print(f"Overall trend: {trend}")
+
     latest = prices.iloc[-1]
-    if pd.notna(latest["Long MA"]):
-        if latest["Short MA"] > latest["Long MA"]:
-            print("Signal : Short-term average is above long-term "
-                  "(bullish).")
+
+    short_ma = latest["Short MA"]
+    long_ma = latest["Long MA"]
+
+    # Handle moving averages that may also contain multiple columns.
+    if isinstance(short_ma, pd.Series):
+        short_ma = short_ma.iloc[0]
+
+    if isinstance(long_ma, pd.Series):
+        long_ma = long_ma.iloc[0]
+
+    if pd.notna(short_ma) and pd.notna(long_ma):
+        if short_ma > long_ma:
+            print("Signal: Short-term average is above long-term average (bullish).")
+        elif short_ma < long_ma:
+            print("Signal: Short-term average is below long-term average (bearish).")
         else:
-            print("Signal : Short-term average is below long-term"
-                  "(bearish).")
+            print("Signal: Both moving averages are equal.")
+
 
 def ask_view_another():
     """Step 9: Ask the user if they want to view another stock."""
@@ -136,4 +167,46 @@ def ask_view_another():
 
 def load_stock(symbol):
     """Steps 4-6 for one symbol. Returns clean prices, or None on failure."""
-    data = get_stock_data(symbol)
+    data = get_stock_data(symbol) # Step 4
+    if not is_data_available(data): # Step 5
+        print (f"Sorry, no data found for '{symbol}'."
+              "Check the symbol and your internet connection.")
+        return None
+    return clean_data(data) # Step 6
+
+
+def main():
+    """Run the Trade Chart application."""
+    # Step 1: Start the application
+    show_welcome() # Step 2
+
+    view_another = True
+    while view_another: # Loop for Step 9
+        symbol = get_stock_symbol() # Step 3
+
+        # Give the user a few tries if the symbol has no data.
+        prices = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            prices = load_stock(symbol) # Steps 4-6
+            if prices is not None:
+                break
+            if attempt < MAX_ATTEMPTS:
+                symbol = get_stock_symbol() 
+
+            # Step 7: Display the stock chart
+        if prices is not None:
+            display_chart(symbol, prices)
+
+            # Step 8: Analyze the stock trend
+            analyze_trend(symbol, prices)
+        else:
+            print("Too many failed attempts. Let's try again.")
+
+        # Step 9: Ask whether to view another stock
+        view_another = ask_view_another()
+
+    # Step 10: Close the application
+    print(f"\nThanks for using {APP_NAME}. Goodbye!")
+
+if __name__ == "__main__":
+    main()

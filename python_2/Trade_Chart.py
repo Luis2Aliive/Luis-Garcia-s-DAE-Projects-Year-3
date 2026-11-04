@@ -208,5 +208,7 @@ def main():
     # Step 10: Close the application
     print(f"\nThanks for using {APP_NAME}. Goodbye!")
 
+#.
+
 if __name__ == "__main__":
     main()

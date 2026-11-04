@@ -25,6 +25,7 @@ SHORT_WINDOW = 25 # short moving average (days)
 LONG_WINDOW = 50 # long moving average (days)
 TREND_THRESHOLD = 2.0 # % change needed to call a trend up or down
 MAX_ATTEMPTS = 3 # tries allowed to enter a valid symbol
+search_history = [] # stores all stock symbols searched by the user
 
 
 # Functions
@@ -183,6 +184,17 @@ def main():
     view_another = True
     while view_another: # Loop for Step 9
         symbol = get_stock_symbol() # Step 3
+    def record_search(symbol):
+        """Save and display searched stock symbols."""
+
+
+        search_history.append(symbol)
+
+        print("\n--- Stock Search History ---")
+
+        for index, stock in enumerate(search_history, start=1):
+            print(f"{index}. {stock}")
+        record_search(symbol) # Record and display the stock search history
 
         # Give the user a few tries if the symbol has no data.
         prices = None

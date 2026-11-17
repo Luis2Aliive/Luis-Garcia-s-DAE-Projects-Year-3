@@ -28,7 +28,6 @@ MAX_ATTEMPTS = 3 # tries allowed to enter a valid symbol.
 SEARCH_HISTORY = [] # stores all stock symbols searched by the user.
 HISTORY_FILE = "trade_chart_history.txt" # Stores stock the search history.
 
-
 # Functions
 def show_welcome():
     """Step 2: Display a welcome message."""
@@ -36,7 +35,6 @@ def show_welcome():
     print(f"Welcome to {APP_NAME}!")
     print("See stock prices & trends in easy-to-read charts.")
     print("=" * 50)
-
 
 def get_stock_symbol():
     """Step 3: Ask the user for a stock symbol (such as AAPL for Apple)."""
@@ -46,62 +44,143 @@ def get_stock_symbol():
         symbol = symbol.strip().upper()
         if symbol.isalpha() and len(symbol) <= 5:
             return symbol
-        print("Please enter 1 - 5 letters only (no numbers or spaces).")
+        print("Please enter 1 - 5 letters only (no numbers or spaces).")   
 
+def record_search(symbol):
+    SEARCH_HISTORY.append(symbol)
+    save_search_history()
+
+    print("\n--- Stock Search History ---")
+
+    for index, stock in enumerate(SEARCH_HISTORY, start=1):
+        print(f"{index}. {stock}")
+
+def load_search_history():
+    try:
+        with open(HISTORY_FILE, "r") as file:
+            for line in file:
+                symbol = line.strip()
+
+                if symbol:
+                    SEARCH_HISTORY.append(symbol)
+
+    except FileNotFoundError:
+        pass
+
+def save_search_history():
+    with open(HISTORY_FILE, "w") as file:
+        for symbol in SEARCH_HISTORY:
+            file.write(symbol + "\n")
 
 def get_stock_data(symbol):
-    """Step 4. Get the stock's price data. Returns None if it falls."""
+    """Step 4: Get the stock's price data."""
+
     try:
-        return yf.download(symbol, period =TIME_PERIOD, progress = False,
-                           auto_adjust=True)
+        data = yf.download(
+            symbol,
+            period=TIME_PERIOD,
+            progress=False,
+            auto_adjust=True
+        )
+
     except Exception as error:
         print(f"Could not download data: {error}")
         return None
 
+    else:
+        if data is None or data.empty:
+            print(f"No stock data found for '{symbol}'.")
+            return None
+
+        return data
+
+    finally:
+        print("Stock data download attempt finished.")
 
 def is_data_available(data):
     """Step 5: Check that the stock data is available."""
     return data is not None and not data.empty
 
-
 def clean_data(data):
     """Step 6: Organize the data so it can be displayed."""
-    # Newer yfinance versions return multi-level column names; flatten them.
+
     if isinstance(data.columns, pd.MultiIndex):
         data = data.copy()
         data.columns = data.columns.get_level_values(0)
 
-    prices = data[["Close"]].dropna().copy() # remove missing prices.
+    prices = data[["Close"]].copy()
+
+    if isinstance(prices["Close"], pd.DataFrame):
+        prices["Close"] = prices["Close"].iloc[:, 0]
+
+    prices = prices.dropna(subset=["Close"])
+
     prices["Short MA"] = prices["Close"].rolling(SHORT_WINDOW).mean()
     prices["Long MA"] = prices["Close"].rolling(LONG_WINDOW).mean()
 
     return prices
 
+def load_stock(symbol):
+    """Steps 4-6 for one symbol. Returns clean prices, or None on failure."""
+
+    data = get_stock_data(symbol)
+
+    if not is_data_available(data):
+        print(
+            f"Sorry, no data found for '{symbol}'. "
+            "Check the symbol and your internet connection."
+        )
+        return None
+
+    prices = clean_data(data)
+
+    if prices.empty:
+        print("No closing prices are available.")
+        return None
+
+    return prices
 
 def display_chart(symbol, prices):
     """Step 7: Display the stock price in a chart."""
+
     plt.figure(figsize=(10, 5))
-    plt.plot(prices.index, prices["Close"], label="Closing Price", linewidth = 2)
-    plt.plot(prices.index, prices["Short MA"],
-             label=f"{SHORT_WINDOW}-Day Average", linestyle="--")
-    plt.plot(prices.index, prices["Long MA"],
-             label=f"{LONG_WINDOW}-Day Average", linestyle="--")
+
+    plt.plot(
+        prices.index,
+        prices["Close"],
+        label="Closing Price",
+        linewidth=2
+    )
+
+    plt.plot(
+        prices.index,
+        prices["Short MA"],
+        label=f"{SHORT_WINDOW}-Day Average",
+        linestyle="--"
+    )
+
+    plt.plot(
+        prices.index,
+        prices["Long MA"],
+        label=f"{LONG_WINDOW}-Day Average",
+        linestyle="--"
+    )
+
     plt.title(f"{symbol} Stock Price ({TIME_PERIOD})")
     plt.xlabel("Date")
     plt.ylabel("Price (USD)")
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
+
     print("\nShowing chart... close the chart window to see the analysis.")
     plt.show()
-
 
 def analyze_trend(symbol, prices):
     """Step 8: Analyze how the stock price changes over time."""
 
     closes = prices["Close"]
 
-    # Handle stock data with multiple columns.
     if isinstance(closes, pd.DataFrame):
         closes = closes.iloc[:, 0]
 
@@ -142,7 +221,6 @@ def analyze_trend(symbol, prices):
     short_ma = latest["Short MA"]
     long_ma = latest["Long MA"]
 
-    # Handle moving averages that may also contain multiple columns.
     if isinstance(short_ma, pd.Series):
         short_ma = short_ma.iloc[0]
 
@@ -151,36 +229,40 @@ def analyze_trend(symbol, prices):
 
     if pd.notna(short_ma) and pd.notna(long_ma):
         if short_ma > long_ma:
-            print("Signal: Short-term average is above long-term average (bullish).")
+            print(
+                "Signal: Short-term average is above long-term average "
+                "(bullish)."
+            )
         elif short_ma < long_ma:
-            print("Signal: Short-term average is below long-term average (bearish).")
+            print(
+                "Signal: Short-term average is below long-term average "
+                "(bearish)."
+            )
         else:
             print("Signal: Both moving averages are equal.")
 
 def ask_view_another():
     """Step 9: Ask the user if they want to view another stock."""
+
     while True:
         answer = input("\nView another stock? (yes/no): ").strip().lower()
+
         if answer in ("yes", "y"):
             return True
+
         if answer in ("no", "n"):
             return False
-        print("Please type yes or no.")
 
-def load_stock(symbol):
-    """Steps 4-6 for one symbol. Returns clean prices, or None on failure."""
-    data = get_stock_data(symbol) # Step 4.
-    if not is_data_available(data): # Step 5.
-        print (f"Sorry, no data found for '{symbol}'."
-              "Check the symbol and your internet connection.")
-        return None
-    return clean_data(data) # Step 6.
+        print("Please type yes or no.")
 
 def main():
     """Run the Trade Chart application."""
+
     # Step 1: Start the application.
-    show_welcome() # Step 2.
-    load_search_history() # Load previous stock searches.
+    show_welcome()  # Step 2.
+
+    load_search_history()
+
     if SEARCH_HISTORY:
         print("\n--- Previous Stock Searches ---")
 
@@ -188,54 +270,25 @@ def main():
             print(f"{index}. {stock}")
 
     view_another = True
-    while view_another: # Loop for Step 9.
-        symbol = get_stock_symbol() # Step 3.
-def record_search(symbol):
-    """Save and display searched stock symbols."""
 
-    SEARCH_HISTORY.append(symbol)
-    save_search_history()
+    while view_another:  # Loop for Step 9.
 
-    print("\n--- Stock Search History ---")
-
-    for index, stock in enumerate(SEARCH_HISTORY, start=1):
-        print(f"{index}. {stock}")
-
-def load_search_history():
-    """Load previous stock searches from a file."""
-
-    try:
-        with open(HISTORY_FILE, "r") as file:
-            for line in file:
-                symbol = line.strip()
-
-                if symbol:
-                    SEARCH_HISTORY.append(symbol)
-
-    except FileNotFoundError:
-        print("No previous search history found.")
-
-def save_search_history():
-    """Save stock searches to a file."""
-
-    with open(HISTORY_FILE, "w") as file:
-        for symbol in SEARCH_HISTORY:
-            file.write(symbol + "\n")
-        
-        symbol = get_stock_symbol() # Step 3.
-        record_search(symbol) # Record and display the stock search history.
+        symbol = get_stock_symbol()  # Step 3.
+        record_search(symbol)
 
         # Give the user a few tries if the symbol has no data.
         prices = None
+
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            prices = get_stock_data(symbol) # Steps 4-6.
+            prices = load_stock(symbol)  # Steps 4-6.
             if prices is not None:
                 break
+
             if attempt < MAX_ATTEMPTS:
-                symbol = get_stock_symbol() 
+                symbol = get_stock_symbol()
                 record_search(symbol)
 
-            # Step 7: Display the stock chart.
+        # Step 7: Display the stock chart.
         if prices is not None:
             display_chart(symbol, prices)
 
